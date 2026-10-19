@@ -5,6 +5,11 @@ on:
     # 01:07 UTC = 09:07 SGT. GitHub can start scheduled runs some minutes late.
     - cron: "7 1 * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only: print the message in the log, don't send or save it"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -23,12 +28,12 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python3 digest.py
+        run: python3 digest.py ${{ inputs.dry_run && '--dry-run' || '' }}
 
       # Keeps a daily record of what was reported. The commit also counts as repo
       # activity, which stops GitHub from pausing the schedule after 60 quiet days.
       - name: Save today's snapshot
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.dry_run }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

@@ -49,7 +49,7 @@ The vote doesn't define how supply is measured. The Risk Committee recommended a
    gh secret set TELEGRAM_BOT_TOKEN
    gh secret set TELEGRAM_CHAT_ID
    ```
-5. To test it, open Actions → Daily digest → **Run workflow**.
+5. To test it, open Actions → Daily digest → **Run workflow**. Tick "Preview only" to see the message in the run log without sending it.
 
 If a run fails, GitHub emails you.
 
