@@ -5,6 +5,7 @@ A Telegram message every morning (about 9am Singapore time) covering:
 - **Ethena:** USDe supply, its 14-day average, and progress toward the ENA buyback milestones. Also the sUSDe yield and how much USDe is staked.
 - **Chainlink:** the total value secured (TVS) by Chainlink oracles, and how far it leads the next biggest oracle.
 - **LINK Reserve:** how much LINK the Chainlink Reserve has bought, compared with how much LINK Chainlink has unlocked into circulation.
+- **Aero:** trading volume, revenue paid to sAERO stakers, and Aero's share of DEX volume against the biggest rival on each chain it runs on.
 - **Whole market:** total stablecoin supply and DeFi TVL, as signals of whether on-chain adoption is growing or shrinking.
 
 It runs on GitHub Actions for free, so your computer doesn't need to be on.
@@ -39,6 +40,21 @@ Reserve: 6.29M LINK ($77.8M)
 Unlocked by Chainlink:
   90d 18.8M · 365d 70.0M
 Reserve buys vs unlocks: 7% (90d) · 8% (365d)
+
+Aero
+Volume 30d: $16.5B (+18.2% vs prior 30d)
+Revenue to sAERO stakers 30d: $8.2M (−43.9% vs prior 30d)
+  0.050% of volume (prior 30d 0.104%)
+  Annualized $99.3M = 13.9% of AERO market cap ($716.0M)
+DEX volume share, 30d (prior 30d):
+  All 7 chains $110.7B: Aero 15% (10%) · Uniswap 56% (58%)
+  Ethereum $39.7B: Aero 0.0% (0.0%) · Uniswap 59% (56%)
+  Robinhood Chain $33.8B: Aero 0.0% (0.0%) · Uniswap 77% (76%)
+  Base $29.8B: Aero 53% (48%) · Uniswap 26% (25%)
+  Arbitrum $5.05B: Aero 0.0% (0.0%) · Uniswap 70% (75%)
+  Arc $1.31B: Aero 4.6% (1.7%) · Uniswap 91% (87%)
+  OP Mainnet $876.6M: Aero 58% (57%) · Uniswap 16% (19%)
+  Ink $89.6M: Aero 66% (64%) · Uniswap 18% (13%)
 
 Whole market
 Stablecoin supply: $306.4B
@@ -80,6 +96,16 @@ Against that, Chainlink Labs regularly moves LINK out of the wallets it lists as
 
 Past balances need an Ethereum node that keeps old state. If none of the public ones answers, the digest still shows today's Reserve balance.
 
+## Aero
+
+Aerodrome (Base) and Velodrome (OP Mainnet) merged into [Aero](https://www.theblock.co/news/defi/2026-10-21-aerodrome-velodrome-merge-aero-421514) on 21 Oct 2026 and launched on seven chains. Aero pays 100% of its revenue to people who stake AERO (sAERO), and liquidity providers are paid in AERO rewards. A fee-funded token only holds up if trading volume does (SUSHI fell about 95% when 2021's volume dried up), so the section tracks:
+
+- **Volume:** Aero's trading volume over the last 30 days against the 30 days before.
+- **Revenue to stakers:** what sAERO stakers earned, how much of each traded dollar that is, and the annualized total as a share of AERO's market cap. If only some AERO is staked, stakers' actual yield is higher than that share.
+- **Market share:** Aero's share of all DEX volume on its seven chains, and on each chain against the biggest rival there. Rising share on Ethereum, Arbitrum and Robinhood Chain, where Uniswap dominates, is the sign that the model is pulling volume from bigger exchanges.
+
+DefiLlama groups Aero, Aerodrome and Velodrome under one protocol, so the numbers include the old Aerodrome and Velodrome pools. Volume on a chain only appears once DefiLlama tracks Aero there.
+
 ## Setup
 
 1. In Telegram, message **@BotFather**, send `/newbot`, and copy the token.
@@ -113,5 +139,7 @@ All of these are free and need no API key.
 - [Ethena API](https://ethena.fi): sUSDe yield, which Ethena updates about weekly
 - Ethereum (public RPC): USDe staked in sUSDe, via the vault's `totalAssets()`, and the LINK balances of the Reserve and the non-circulating wallets
 - [Chainlink supply API](https://supply.chain.link/supply): the list of non-circulating LINK wallets
+- [DefiLlama DEX volumes and fees](https://defillama.com/dexs): volume by exchange on each of Aero's chains, and revenue to sAERO stakers
+- [CoinGecko](https://www.coingecko.com/en/coins/aerodrome-finance): AERO market cap
 
 Each run appends a row to `data/history.csv` and commits it. That builds a record of what was reported, and the commit keeps GitHub from pausing the schedule, which it does after 60 days without repo activity.

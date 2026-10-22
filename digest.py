@@ -5,6 +5,8 @@ Sends one Telegram message a day with:
   sUSDe yield, and how much USDe is staked.
 - Chainlink: total value secured (TVS) versus the next biggest oracle, and
   how much LINK the Chainlink Reserve buys compared with how much Chainlink unlocks.
+- Aero: volume, revenue to sAERO stakers, and its share of DEX volume against
+  the biggest rival on each chain it runs on.
 - Whole market: total stablecoin supply and DeFi TVL, as adoption signals.
 
 Meant to run once a day from GitHub Actions. Uses only the standard library.
@@ -20,6 +22,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -54,6 +57,15 @@ LATEST_ANSWER_SELECTOR = "0x50d25bcd"
 BLOCKS_PER_DAY = 7200  # one block every 12 seconds
 RESERVE_SPANS = (90, 365)
 
+# Aero, the Oct 2026 merger of Aerodrome and Velodrome. All of its revenue goes to
+# sAERO stakers; the question is whether volume, revenue and DEX market share hold up.
+AERO_PARENT = "parent#aero-protocol"  # DefiLlama's group for Aero, Aerodrome and Velodrome
+AERO_CHAINS = ["Base", "Ethereum", "Robinhood Chain", "Arbitrum", "Arc", "OP Mainnet", "Ink"]
+DEX_CHAIN_URL = "https://api.llama.fi/overview/dexs/{}?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true"
+AERO_REVENUE_URL = "https://api.llama.fi/summary/fees/aero-protocol?dataType=dailyHoldersRevenue&excludeTotalDataChartBreakdown=true"
+AERO_GECKO_ID = "aerodrome-finance"
+AERO_MCAP_URL = f"https://api.coingecko.com/api/v3/simple/price?ids={AERO_GECKO_ID}&vs_currencies=usd&include_market_cap=true"
+
 # ENA buyback milestones approved in Sep 2026
 # (https://gov.ethenafoundation.com/t/ena-fee-switch-activation/830):
 # (USDe supply, % of protocol revenue used to buy back ENA). The vote doesn't
@@ -73,6 +85,9 @@ SNAPSHOT_FIELDS = [
     "chainlink_share",
     "link_reserve",
     "link_circulating",
+    "aero_volume_30d",
+    "aero_share_30d",
+    "aero_staker_revenue_30d",
     "stablecoins_total",
     "defi_tvl",
 ]
@@ -303,6 +318,75 @@ def reserve_lines(link_usd, history):
     return lines
 
 
+def parent_volumes(protocols):
+    """{protocol group: (volume last 30d, volume the 30d before)} from one chain's DefiLlama DEX list."""
+    volumes = {}
+    for protocol in protocols:
+        key = protocol.get("parentProtocol") or protocol["name"]
+        last, before = volumes.get(key, (0, 0))
+        volumes[key] = (last + (protocol.get("total30d") or 0), before + (protocol.get("total60dto30d") or 0))
+    return volumes
+
+
+def merge_volumes(volume_maps):
+    merged = {}
+    for volumes in volume_maps:
+        for key, (last, before) in volumes.items():
+            m_last, m_before = merged.get(key, (0, 0))
+            merged[key] = (m_last + last, m_before + before)
+    return merged
+
+
+def group_name(key):
+    if key == AERO_PARENT:
+        return "Aero"
+    if not key.startswith("parent#"):
+        return key
+    return " ".join(word[:1].upper() + word[1:] for word in key.removeprefix("parent#").split("-"))
+
+
+def fmt_share(fraction):
+    return f"{fraction:.0%}" if fraction >= 0.1 else f"{fraction:.1%}"
+
+
+def share_line(label, volumes):
+    """'Base $29.7B: Aero 53% (49%) · Uniswap 27% (25%)', 30d share with the prior 30d in brackets."""
+    totals = [sum(v[i] for v in volumes.values()) for i in (0, 1)]
+
+    def shares(key):
+        last, before = (volumes.get(key, (0, 0))[i] / totals[i] if totals[i] else 0 for i in (0, 1))
+        return f"{fmt_share(last)} ({fmt_share(before)})"
+
+    rivals = [key for key in volumes if key != AERO_PARENT]
+    leader = max(rivals, key=lambda key: volumes[key][0]) if rivals else None
+    line = f"{label} {fmt_usd(totals[0])}: Aero {shares(AERO_PARENT)}"
+    return line + (f" · {group_name(leader)} {shares(leader)}" if leader else "")
+
+
+def aero_lines(chain_volumes, revenue, mcap):
+    """chain_volumes: {chain: parent_volumes()}; revenue: daily staker revenue, oldest first."""
+    everywhere = merge_volumes(chain_volumes.values())
+    volume, volume_before = everywhere.get(AERO_PARENT, (0, 0))
+    earned, earned_before = sum(revenue[-30:]), sum(revenue[-60:-30])
+    lines = [
+        f"Volume 30d: {fmt_usd(volume)}" + (f" ({fmt_pct(volume / volume_before - 1)} vs prior 30d)" if volume_before else ""),
+        f"Revenue to sAERO stakers 30d: {fmt_usd(earned)}"
+        + (f" ({fmt_pct(earned / earned_before - 1)} vs prior 30d)" if earned_before else ""),
+    ]
+    if volume and volume_before:
+        lines.append(f"  {earned / volume:.3%} of volume (prior 30d {earned_before / volume_before:.3%})")
+    if mcap:
+        yearly = earned * 365 / 30
+        lines.append(f"  Annualized {fmt_usd(yearly)} = {yearly / mcap:.1%} of AERO market cap ({fmt_usd(mcap)})")
+    lines += [
+        "DEX volume share, 30d (prior 30d):",
+        "  " + share_line(f"All {len(chain_volumes)} chains", everywhere),
+    ]
+    by_size = sorted(chain_volumes.items(), key=lambda item: -sum(v[0] for v in item[1].values()))
+    lines += ["  " + share_line(chain, volumes) for chain, volumes in by_size]
+    return lines
+
+
 # --- Ethereum call encoding (unit tested) ---------------------------------------
 
 
@@ -470,6 +554,27 @@ def link_reserve_section(today):
     return reserve_lines(link_usd, history), {"link_reserve": reserve, "link_circulating": circulating}
 
 
+def aero_section(today):
+    chain_volumes = {
+        chain: parent_volumes(get_json(DEX_CHAIN_URL.format(urllib.parse.quote(chain)))["protocols"]) for chain in AERO_CHAINS
+    }
+    # Drop today's partial day.
+    revenue = [value for timestamp, value in get_json(AERO_REVENUE_URL)["totalDataChart"] if utc_day(timestamp) < today]
+    try:
+        mcap = get_json(AERO_MCAP_URL)[AERO_GECKO_ID]["usd_market_cap"]
+    except (OSError, ValueError, KeyError) as e:
+        log(f"AERO market cap unavailable: {e}")
+        mcap = None
+    everywhere = merge_volumes(chain_volumes.values())
+    volume = everywhere.get(AERO_PARENT, (0, 0))[0]
+    values = {
+        "aero_volume_30d": volume,
+        "aero_share_30d": volume / sum(v[0] for v in everywhere.values()),
+        "aero_staker_revenue_30d": sum(revenue[-30:]),
+    }
+    return aero_lines(chain_volumes, revenue, mcap), values
+
+
 def market_section(today):
     stablecoins = stablecoin_series(ALL_STABLECOINS_CHART_URL)
     tvl = defi_tvl_series()
@@ -486,6 +591,7 @@ SECTIONS = [
     ("Ethena", ethena_section),
     ("Chainlink", chainlink_section),
     ("LINK Reserve", link_reserve_section),
+    ("Aero", aero_section),
     ("Whole market", market_section),
 ]
 

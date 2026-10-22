@@ -233,6 +233,47 @@ class LinkReserveTest(unittest.TestCase):
         self.assertEqual(lines[1:], ["Reserve buys vs unlocks: unavailable"])
 
 
+class AeroTest(unittest.TestCase):
+    def test_parent_volumes_groups_versions(self):
+        protocols = [
+            {"name": "Aerodrome Slipstream", "parentProtocol": "parent#aero-protocol", "total30d": 10, "total60dto30d": 8},
+            {"name": "Aerodrome V1", "parentProtocol": "parent#aero-protocol", "total30d": 2, "total60dto30d": None},
+            {"name": "Tessera V", "total30d": 1, "total60dto30d": 1},
+        ]
+        self.assertEqual(digest.parent_volumes(protocols), {"parent#aero-protocol": (12, 8), "Tessera V": (1, 1)})
+
+    def test_group_name(self):
+        self.assertEqual(digest.group_name("parent#aero-protocol"), "Aero")
+        self.assertEqual(digest.group_name("parent#curve-finance"), "Curve Finance")
+        self.assertEqual(digest.group_name("parent#1inch"), "1inch")
+        self.assertEqual(digest.group_name("Tessera V"), "Tessera V")
+
+    def test_aero_lines(self):
+        chains = {
+            "Ethereum": {"parent#uniswap": (60e9, 60e9), "parent#fluid": (40e9, 40e9)},
+            "Base": {"parent#aero-protocol": (15e9, 10e9), "parent#uniswap": (10e9, 10e9), "Tessera V": (5e9, 5e9)},
+        }
+        revenue = [0.1e6] * 30 + [0.2e6] * 30
+        self.assertEqual(
+            digest.aero_lines(chains, revenue, 600e6),
+            [
+                "Volume 30d: $15.0B (+50.0% vs prior 30d)",
+                "Revenue to sAERO stakers 30d: $6.0M (+100.0% vs prior 30d)",
+                "  0.040% of volume (prior 30d 0.030%)",
+                "  Annualized $73.0M = 12.2% of AERO market cap ($600.0M)",
+                "DEX volume share, 30d (prior 30d):",
+                "  All 2 chains $130.0B: Aero 12% (8.0%) · Uniswap 54% (56%)",
+                "  Ethereum $100.0B: Aero 0.0% (0.0%) · Uniswap 60% (60%)",
+                "  Base $30.0B: Aero 50% (40%) · Uniswap 33% (40%)",
+            ],
+        )
+
+    def test_aero_lines_without_market_cap_or_history(self):
+        lines = digest.aero_lines({"Base": {"parent#aero-protocol": (1e9, 0)}}, [1e6] * 10, None)
+        self.assertEqual(lines[:2], ["Volume 30d: $1.00B", "Revenue to sAERO stakers 30d: $10.0M"])
+        self.assertEqual(lines[-1], "  Base $1.00B: Aero 100% (0.0%)")
+
+
 class BuildDigestTest(unittest.TestCase):
     def test_failed_section_does_not_block_others(self):
         def broken(today):
