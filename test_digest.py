@@ -214,23 +214,40 @@ class LinkReserveTest(unittest.TestCase):
         self.assertEqual(digest.decode_aggregate(result), [7, 10**18])
 
     def test_reserve_lines(self):
-        history = {0: (6.29e6, 766.85e6), 90: (4.94e6, 748.1e6), 365: (0.52e6, 696.85e6)}
+        history = {
+            0: (6.29e6, 766.85e6),
+            7: (6.195e6, 766.85e6),
+            28: (5.91e6, 766.85e6),
+            90: (4.94e6, 748.1e6),
+            365: (0.52e6, 696.85e6),
+        }
         self.assertEqual(
-            digest.reserve_lines(12.37, history),
+            digest.reserve_lines(12.37, history, (40.875e6, 1.7e6)),
             [
-                "Reserve: 6.29M LINK ($77.8M)",
+                "Reserve: 6.29M LINK ($77.8M) · 0.82% of circulating",
                 "  90d +1.35M · 365d +5.77M",
                 "Unlocked by Chainlink:",
                 "  90d 18.8M · 365d 70.0M",
                 "Reserve buys vs unlocks: 7% (90d) · 8% (365d)",
+                "Weekly buying: last 7d 95k LINK ($1.2M) · 4-wk avg $1.2M/wk",
+                "  0.1× the $10.0M/wk success threshold",
+                "Buyback yield: 0.71% of market cap a year (90d pace)",
+                "Staked: 42.6M LINK (community pool 100% full)",
             ],
         )
 
+    def test_buying_step_change_alerts(self):
+        history = {0: (6.29e6, 766.85e6), 7: (5.29e6, 766.85e6), 28: (2.29e6, 766.85e6), 90: (4.94e6, 748.1e6)}
+        lines = digest.reserve_lines(12.37, history, (40.875e6, 1.7e6))
+        self.assertEqual(lines[0], "🎯 Reserve buying averaged $12.4M/wk over 4 weeks, past the 10× threshold")
+        self.assertEqual(lines[1], "🚨 Reserve buying jumped: 4-week pace is 9.5× its 90-day pace")
+
     def test_reserve_lines_without_past_data(self):
-        lines = digest.reserve_lines(12.37, {0: (6.29e6, 766.85e6), 365: (0.52e6, 766.85e6)})
-        self.assertEqual(lines[1:], ["  365d +5.77M", "Unlocked by Chainlink:", "  365d 0.00M"])
-        lines = digest.reserve_lines(12.37, {0: (6.29e6, 766.85e6)})
-        self.assertEqual(lines[1:], ["Reserve buys vs unlocks: unavailable"])
+        staked = (40e6, 1e6)
+        lines = digest.reserve_lines(12.37, {0: (6.29e6, 766.85e6), 365: (0.52e6, 766.85e6)}, staked)
+        self.assertEqual(lines[1:4], ["  365d +5.77M", "Unlocked by Chainlink:", "  365d 0.00M"])
+        lines = digest.reserve_lines(12.37, {0: (6.29e6, 766.85e6)}, staked)
+        self.assertEqual(lines[1:], ["Reserve buys vs unlocks: unavailable", "Staked: 41.0M LINK (community pool 98% full)"])
 
 
 class AeroTest(unittest.TestCase):

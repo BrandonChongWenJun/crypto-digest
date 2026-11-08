@@ -54,8 +54,16 @@ MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11"
 AGGREGATE_SELECTOR = "0x252dba42"  # Multicall3 aggregate((address,bytes)[])
 BALANCE_OF_SELECTOR = "0x70a08231"
 LATEST_ANSWER_SELECTOR = "0x50d25bcd"
+COMMUNITY_STAKING_POOL = "0xBc10f2E862ED4502144c7d632a3459F49DFCDB5e"
+OPERATOR_STAKING_POOL = "0xA1d76A7cA72128541E9FCAcafBdA3a92EF94fDc5"
+COMMUNITY_POOL_CAP = 40.875e6
 BLOCKS_PER_DAY = 7200  # one block every 12 seconds
 RESERVE_SPANS = (90, 365)
+LINK_HISTORY_DAYS = (7, 28, *RESERVE_SPANS)
+# Value-accrual test from a May 2026 thread: enterprise adoption only reaches LINK
+# if Reserve buying rises about 10x from roughly $1M a week.
+BUYBACK_TARGET_PER_WEEK = 10e6
+STEP_CHANGE = 3  # alert when the 4-week pace is this multiple of the 90-day pace
 
 # Aero, the Oct 2026 merger of Aerodrome and Velodrome. All of its revenue goes to
 # sAERO stakers; the question is whether volume, revenue and DEX market share hold up.
@@ -85,6 +93,7 @@ SNAPSHOT_FIELDS = [
     "chainlink_share",
     "link_reserve",
     "link_circulating",
+    "link_staked",
     "aero_volume_30d",
     "aero_share_30d",
     "aero_staker_revenue_30d",
@@ -298,24 +307,52 @@ def fmt_link(amount):
     return f"{sign}{amount / 1e6:.1f}M" if amount >= 10e6 else f"{sign}{amount / 1e6:.2f}M"
 
 
-def reserve_lines(link_usd, history):
-    """history: {days ago: (Reserve LINK, circulating LINK)} for today and any of RESERVE_SPANS."""
+def fmt_link_small(amount):
+    return f"{amount / 1e3:.0f}k" if abs(amount) < 1e6 else fmt_link(amount)
+
+
+def reserve_lines(link_usd, history, staked):
+    """history: {days ago: (Reserve LINK, circulating LINK)} for today and any of LINK_HISTORY_DAYS.
+
+    staked: (community pool LINK, operator pool LINK).
+    """
     reserve, circulating = history[0]
-    lines = [f"Reserve: {fmt_link(reserve)} LINK ({fmt_usd(reserve * link_usd)})"]
-    spans = [days for days in RESERVE_SPANS if days in history]
-    if not spans:
-        return [*lines, "Reserve buys vs unlocks: unavailable"]
-    bought = {d: reserve - history[d][0] for d in spans}
-    released = {d: circulating - history[d][1] for d in spans}
-    ratios = [f"{bought[d] / released[d]:.0%} ({d}d)" for d in spans if released[d] > 0]
-    lines += [
-        "  " + " · ".join(f"{d}d {'+' if bought[d] >= 0 else ''}{fmt_link(bought[d])}" for d in spans),
-        "Unlocked by Chainlink:",
-        "  " + " · ".join(f"{d}d {fmt_link(released[d])}" for d in spans),
-    ]
-    if ratios:
-        lines.append("Reserve buys vs unlocks: " + " · ".join(ratios))
-    return lines
+    bought = {d: reserve - history[d][0] for d in LINK_HISTORY_DAYS if d in history}
+    released = {d: circulating - history[d][1] for d in LINK_HISTORY_DAYS if d in history}
+    alerts, lines = [], [f"Reserve: {fmt_link(reserve)} LINK ({fmt_usd(reserve * link_usd)}) · {reserve / circulating:.2%} of circulating"]
+
+    spans = [d for d in RESERVE_SPANS if d in history]
+    if spans:
+        ratios = [f"{bought[d] / released[d]:.0%} ({d}d)" for d in spans if released[d] > 0]
+        lines += [
+            "  " + " · ".join(f"{d}d {'+' if bought[d] >= 0 else ''}{fmt_link(bought[d])}" for d in spans),
+            "Unlocked by Chainlink:",
+            "  " + " · ".join(f"{d}d {fmt_link(released[d])}" for d in spans),
+        ]
+        if ratios:
+            lines.append("Reserve buys vs unlocks: " + " · ".join(ratios))
+    else:
+        lines.append("Reserve buys vs unlocks: unavailable")
+
+    # Weekly pace, valued at today's price.
+    if 7 in bought and 28 in bought:
+        week, month_avg = bought[7], bought[28] / 4
+        lines += [
+            f"Weekly buying: last 7d {fmt_link_small(week)} LINK ({fmt_usd(week * link_usd)})"
+            f" · 4-wk avg {fmt_usd(month_avg * link_usd)}/wk",
+            f"  {month_avg * link_usd / BUYBACK_TARGET_PER_WEEK:.1f}× the {fmt_usd(BUYBACK_TARGET_PER_WEEK)}/wk success threshold",
+        ]
+        if month_avg * link_usd >= BUYBACK_TARGET_PER_WEEK:
+            alerts.append(f"🎯 Reserve buying averaged {fmt_usd(month_avg * link_usd)}/wk over 4 weeks, past the 10× threshold")
+        if 90 in bought and bought[90] > 0 and month_avg >= STEP_CHANGE * bought[90] / (90 / 7):
+            alerts.append(f"🚨 Reserve buying jumped: 4-week pace is {month_avg / (bought[90] / (90 / 7)):.1f}× its 90-day pace")
+    if 90 in bought:
+        # Price cancels out: LINK bought per year over circulating LINK.
+        lines.append(f"Buyback yield: {bought[90] * 365 / 90 / circulating:.2%} of market cap a year (90d pace)")
+
+    community, operators = staked
+    lines.append(f"Staked: {fmt_link(community + operators)} LINK (community pool {community / COMMUNITY_POOL_CAP:.0%} full)")
+    return alerts + lines
 
 
 def parent_volumes(protocols):
@@ -468,29 +505,33 @@ def susde_total_assets():
 
 
 def link_reserve_history():
-    """(LINK/USD, {days ago: (Reserve LINK, circulating LINK)}), read in one call per point in time.
+    """(LINK/USD, {days ago: (Reserve LINK, circulating LINK)}, (community staked, operator staked)).
 
-    Past points need an RPC that keeps old state; any that fail are left out.
+    Reads each point in time with one call. Past points need an RPC that keeps old
+    state; any that fail are left out.
     """
     supply = get_json(LINK_SUPPLY_URL)
     total = int(supply["totalSupply"]) / 1e18
-    holders = [LINK_RESERVE, *(b["address"] for b in supply["balances"])]
+    holders = [LINK_RESERVE, COMMUNITY_STAKING_POOL, OPERATOR_STAKING_POOL, *(b["address"] for b in supply["balances"])]
     calls = [(LINK_USD_FEED, LATEST_ANSWER_SELECTOR)]
     calls += [(LINK_TOKEN, BALANCE_OF_SELECTOR + abi_word(int(holder, 16))) for holder in holders]
     latest = int(eth_rpc("eth_blockNumber"), 16)
-    link_usd, history = None, {}
-    for days in (0, *RESERVE_SPANS):
+    link_usd, staked, history = None, None, {}
+    for days in (0, *LINK_HISTORY_DAYS):
         block = hex(latest - days * BLOCKS_PER_DAY)
         try:
-            price, reserve, *locked = decode_aggregate(eth_rpc("eth_call", {"to": MULTICALL3, "data": encode_aggregate(calls)}, block))
+            price, reserve, community, operators, *locked = decode_aggregate(
+                eth_rpc("eth_call", {"to": MULTICALL3, "data": encode_aggregate(calls)}, block)
+            )
         except (OSError, ValueError) as e:
             if days == 0:
                 raise
             log(f"LINK supply {days} days ago unavailable: {e}")
             continue
-        link_usd = link_usd or price / 1e8
+        if days == 0:
+            link_usd, staked = price / 1e8, (community / 1e18, operators / 1e18)
         history[days] = (reserve / 1e18, total - sum(locked) / 1e18)
-    return link_usd, history
+    return link_usd, history, staked
 
 
 # --- Sections --------------------------------------------------------------------
@@ -549,9 +590,10 @@ def chainlink_section(today):
 
 
 def link_reserve_section(today):
-    link_usd, history = link_reserve_history()
+    link_usd, history, staked = link_reserve_history()
     reserve, circulating = history[0]
-    return reserve_lines(link_usd, history), {"link_reserve": reserve, "link_circulating": circulating}
+    values = {"link_reserve": reserve, "link_circulating": circulating, "link_staked": sum(staked)}
+    return reserve_lines(link_usd, history, staked), values
 
 
 def aero_section(today):

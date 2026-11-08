@@ -4,7 +4,7 @@ A Telegram message every morning (about 9am Singapore time) covering:
 
 - **Ethena:** USDe supply, its 14-day average, and progress toward the ENA buyback milestones. Also the sUSDe yield and how much USDe is staked.
 - **Chainlink:** the total value secured (TVS) by Chainlink oracles, and how far it leads the next biggest oracle.
-- **LINK Reserve:** how much LINK the Chainlink Reserve has bought, compared with how much LINK Chainlink has unlocked into circulation.
+- **LINK Reserve:** how much LINK the Chainlink Reserve has bought, compared with how much LINK Chainlink has unlocked into circulation, and whether weekly buying is rising the way it should if enterprise adoption reaches the token.
 - **Aero:** trading volume, revenue paid to sAERO stakers, and Aero's share of DEX volume against the biggest rival on each chain it runs on.
 - **Whole market:** total stablecoin supply and DeFi TVL, as signals of whether on-chain adoption is growing or shrinking.
 
@@ -35,11 +35,15 @@ Share of all oracle TVS: 81% (30d ago 81%)
 Next: RedStone $2.11B · Atlas $981.8M
 
 LINK Reserve
-Reserve: 6.29M LINK ($77.8M)
-  90d +1.35M · 365d +5.77M
+Reserve: 6.57M LINK ($70.9M) · 0.86% of circulating
+  90d +1.22M · 365d +5.84M
 Unlocked by Chainlink:
   90d 18.8M · 365d 70.0M
-Reserve buys vs unlocks: 7% (90d) · 8% (365d)
+Reserve buys vs unlocks: 6% (90d) · 8% (365d)
+Weekly buying: last 7d 95k LINK ($1.0M) · 4-wk avg $1.0M/wk
+  0.1× the $10.0M/wk success threshold
+Buyback yield: 0.64% of market cap a year (90d pace)
+Staked: 42.6M LINK (community pool 100% full)
 
 Aero
 Volume 30d: $16.5B (+18.2% vs prior 30d)
@@ -90,9 +94,18 @@ The digest alerts you if another oracle passes Chainlink, or if a different orac
 
 Chainlink converts revenue paid in other tokens (stablecoins, gas tokens, and enterprise payments) into LINK through Payment Abstraction, and puts that LINK into the [Chainlink Reserve](https://chain.link/blog/chainlink-reserve-strategic-link-reserve). The Reserve's balance is read straight from its Ethereum contract, so it's the most direct public sign of Chainlink's revenue.
 
-Against that, Chainlink Labs regularly moves LINK out of the wallets it lists as non-circulating supply, usually about every three months. Its [supply API](https://supply.chain.link/supply) lists those wallets. The bot reads their balances now and roughly 90 and 365 days ago, so "Unlocked by Chainlink" is how much circulating supply grew over that time.
+Against that, Chainlink Labs regularly moves LINK out of the wallets it lists as non-circulating supply, usually about every three months. Its [supply API](https://supply.chain.link/supply) lists those wallets. The bot reads their balances now and roughly 7, 28, 90 and 365 days ago, so "Unlocked by Chainlink" is how much circulating supply grew over that time.
 
 "Reserve buys vs unlocks" divides the first by the second. If it rises toward 100%, the Reserve is buying back as much LINK as is being unlocked.
+
+The rest of the section tests whether enterprise adoption (DTCC, SWIFT and similar) actually reaches the LINK token. The test comes from a May 2026 discussion: if trillions in traditional-finance volume flow through Chainlink, Reserve buying should rise about 10× from its roughly $1M-a-week baseline. If the volume arrives and buying stays flat, the token isn't capturing that value.
+
+- **Weekly buying:** LINK added to the Reserve over the last 7 days and the average week over the last 4, valued at today's price, and the 4-week average as a multiple of $10M a week.
+- **Buyback yield:** a year of buying at the 90-day pace, as a share of circulating LINK. This equals the share of market cap, since the price cancels out.
+- **Staked:** LINK in the community and node operator staking pools.
+- **Alerts:** 🚨 when the 4-week pace reaches 3× the 90-day pace (a step change), and 🎯 when the 4-week average passes $10M a week. Neither line appears otherwise.
+
+The institutional volume itself (DTCC, SWIFT, CCIP) has no public data feed. It's only disclosed in announcements, so it isn't tracked here.
 
 Past balances need an Ethereum node that keeps old state. If none of the public ones answers, the digest still shows today's Reserve balance.
 
