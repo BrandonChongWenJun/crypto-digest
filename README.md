@@ -86,7 +86,7 @@ The vote doesn't define how supply is measured. The Risk Committee recommended a
 
 ## Ethena's Reserve Fund and Ethena Pay
 
-USDe's yield comes from funding rates on the perpetual futures that hedge part of its backing. When funding turns negative, Ethena's Reserve Fund pays the difference so sUSDe yield doesn't go below zero. The fund stopped receiving new revenue in May 2026, so it can only shrink when it's used. The digest shows its balance from [Ethena's transparency API](https://app.ethena.fi/api/solvency/reserve-fund) and starts with 🚨 if it falls 1% or more in a week.
+USDe's yield comes from funding rates on the perpetual futures that hedge part of its backing. When funding turns negative, Ethena's Reserve Fund pays the difference so sUSDe yield doesn't go below zero. The fund stopped receiving new revenue in May 2026, so it can only shrink when it's used. The digest shows its balance from [Ethena's transparency API](https://ethena.fi/api/solvency/reserve-fund) and starts with 🚨 if it falls 1% or more in a week.
 
 The backing line shows how much of USDe sits in liquid cash and how much is in perp-hedged assets. Only the hedged part earns or pays funding, so it's the part the Reserve Fund protects.
 

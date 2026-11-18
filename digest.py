@@ -40,8 +40,8 @@ ALL_STABLECOINS_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/all"
 DEFI_TVL_URL = "https://api.llama.fi/v2/historicalChainTvl"
 ETHENA_YIELD_URL = "https://ethena.fi/api/yields/protocol-and-staking-yield"
 # The Reserve Fund absorbs negative funding so sUSDe yield doesn't go below zero.
-ETHENA_RESERVE_FUND_URL = "https://app.ethena.fi/api/solvency/reserve-fund"  # hourly USD balance
-ETHENA_COLLATERAL_URL = "https://app.ethena.fi/api/positions/current/collateral"
+ETHENA_RESERVE_FUND_URL = "https://ethena.fi/api/solvency/reserve-fund"  # hourly USD balance
+ETHENA_COLLATERAL_URL = "https://ethena.fi/api/positions/current/collateral"
 RESERVE_FUND_ALERT_DROP = 0.01  # alert when the fund falls this much in 7 days
 # Ethena Pay holds balances as USDe on Avalanche; USDtb is Ethena's T-bill stablecoin.
 USDE_AVALANCHE_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/Avalanche?stablecoin=146"
