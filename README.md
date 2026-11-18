@@ -2,7 +2,7 @@
 
 A Telegram message every morning (about 9am Singapore time) covering:
 
-- **Ethena:** USDe supply, its 14-day average, and progress toward the ENA buyback milestones. Also the sUSDe yield and how much USDe is staked.
+- **Ethena:** USDe supply, its 14-day average, and progress toward the ENA buyback milestones. Also the sUSDe yield, how much USDe is staked, whether the Reserve Fund is being drawn down, and whether Ethena Pay is growing.
 - **Chainlink:** the total value secured (TVS) by Chainlink oracles, and how far it leads the next biggest oracle.
 - **LINK Reserve:** how much LINK the Chainlink Reserve has bought, compared with how much LINK Chainlink has unlocked into circulation, and whether weekly buying is rising the way it should if enterprise adoption reaches the token.
 - **Aero:** trading volume, revenue paid to sAERO stakers, and Aero's share of DEX volume against the biggest rival on each chain it runs on.
@@ -22,8 +22,15 @@ USDe supply: $4.68B
 ▓▓▓▓▓▓░░░░ 64%, needs +$2.71B (+57%)
 ETA at the last 30 days' pace: ~12 months (≈ Oct 2027)
 
-sUSDe yield (30d avg): 4.80% (as of 14 Oct)
-Staked as sUSDe: $1.22B (26% of supply)
+sUSDe yield (30d avg): 5.19% · protocol 5.16% (as of 11 Nov)
+Staked as sUSDe: $1.18B (24% of supply)
+
+Reserve Fund: $62.0M · 1.29% of USDe supply
+  7d −0.0% · 30d −0.1% · 90d −0.1%
+Backing: 83% liquid cash · 17% perp-hedged ($824.0M)
+
+USDe on Avalanche (Ethena Pay): $105.6M · 7d +7.9% · 30d +773.2%
+USDtb supply: $354.9M · 7d −20.5% · 30d −31.4%
 
 Chainlink
 Chainlink TVS: $33.1B · #1 · 532 protocols
@@ -76,6 +83,14 @@ In September 2026, ENA holders [voted to approve](https://gov.ethenafoundation.c
 | Share of revenue used to buy back ENA | 5% | 10% | 15% | 20% | 25% |
 
 The vote doesn't define how supply is measured. The Risk Committee recommended a 14-day average, so a single large mint can't trigger a milestone, and this bot uses that. When the 14-day average crosses a milestone in either direction, the digest leads with an alert.
+
+## Ethena's Reserve Fund and Ethena Pay
+
+USDe's yield comes from funding rates on the perpetual futures that hedge part of its backing. When funding turns negative, Ethena's Reserve Fund pays the difference so sUSDe yield doesn't go below zero. The fund stopped receiving new revenue in May 2026, so it can only shrink when it's used. The digest shows its balance from [Ethena's transparency API](https://app.ethena.fi/api/solvency/reserve-fund) and starts with 🚨 if it falls 1% or more in a week.
+
+The backing line shows how much of USDe sits in liquid cash and how much is in perp-hedged assets. Only the hedged part earns or pays funding, so it's the part the Reserve Fund protects.
+
+Ethena Pay holds users' balances as USDe on Avalanche, so USDe supply on Avalanche tracks its adoption. USDtb, Ethena's Treasury-bill stablecoin, isn't on Avalanche and isn't used by Ethena Pay. It's shown next to it so you can tell the two trends apart.
 
 ## Chainlink's TVS
 
@@ -149,7 +164,8 @@ All of these are free and need no API key.
 
 - [DefiLlama](https://defillama.com/stablecoins): USDe supply history, total stablecoin supply, and DeFi TVL
 - [DefiLlama protocols](https://api-docs.defillama.com/): each protocol's TVL now and 1, 7 and 30 days ago, and the oracles it uses, for Chainlink's TVS
-- [Ethena API](https://ethena.fi): sUSDe yield, which Ethena updates about weekly
+- [Ethena API](https://ethena.fi): sUSDe and protocol yield, which Ethena updates about weekly, plus the Reserve Fund balance and USDe's backing
+- [DefiLlama stablecoins](https://defillama.com/stablecoins): USDe on Avalanche and USDtb supply
 - Ethereum (public RPC): USDe staked in sUSDe, via the vault's `totalAssets()`, and the LINK balances of the Reserve and the non-circulating wallets
 - [Chainlink supply API](https://supply.chain.link/supply): the list of non-circulating LINK wallets
 - [DefiLlama DEX volumes and fees](https://defillama.com/dexs): volume by exchange on each of Aero's chains, and revenue to sAERO stakers

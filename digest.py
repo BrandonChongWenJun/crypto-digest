@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -39,6 +39,13 @@ USDE_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=1
 ALL_STABLECOINS_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/all"
 DEFI_TVL_URL = "https://api.llama.fi/v2/historicalChainTvl"
 ETHENA_YIELD_URL = "https://ethena.fi/api/yields/protocol-and-staking-yield"
+# The Reserve Fund absorbs negative funding so sUSDe yield doesn't go below zero.
+ETHENA_RESERVE_FUND_URL = "https://app.ethena.fi/api/solvency/reserve-fund"  # hourly USD balance
+ETHENA_COLLATERAL_URL = "https://app.ethena.fi/api/positions/current/collateral"
+RESERVE_FUND_ALERT_DROP = 0.01  # alert when the fund falls this much in 7 days
+# Ethena Pay holds balances as USDe on Avalanche; USDtb is Ethena's T-bill stablecoin.
+USDE_AVALANCHE_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/Avalanche?stablecoin=146"
+USDTB_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=221"
 # The last one keeps past state, which the LINK Reserve comparison needs.
 ETH_RPC_URLS = ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org", "https://eth-mainnet.public.blastapi.io"]
 SUSDE_ADDRESS = "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497"
@@ -88,6 +95,9 @@ SNAPSHOT_FIELDS = [
     "usde_avg14",
     "susde_yield_30d",
     "susde_staked",
+    "ethena_reserve_fund",
+    "usde_avalanche",
+    "usdtb_supply",
     "chainlink_tvs",
     "rival_tvs",
     "chainlink_share",
@@ -305,6 +315,34 @@ def fmt_link(amount):
     sign = "−" if amount < 0 else ""
     amount = abs(amount)
     return f"{sign}{amount / 1e6:.1f}M" if amount >= 10e6 else f"{sign}{amount / 1e6:.2f}M"
+
+
+def daily_last(points):
+    """[(date, value)] keeping the last reading of each UTC day, from [{"timestamp": ISO, "value"}]."""
+    days = {}
+    for point in sorted(points, key=lambda p: p["timestamp"]):
+        days[date.fromisoformat(point["timestamp"][:10])] = point["value"]
+    return sorted(days.items())
+
+
+def reserve_fund_lines(fund, usde_supply):
+    """fund: daily [(date, USD)] for Ethena's Reserve Fund."""
+    lines = []
+    week = change(fund, 7)
+    if week is not None and week <= -RESERVE_FUND_ALERT_DROP:
+        lines.append(f"🚨 Reserve Fund {fmt_pct(week)} in 7 days: it's paying for negative funding or a loss")
+    lines += [
+        f"Reserve Fund: {fmt_usd(fund[-1][1])} · {fund[-1][1] / usde_supply:.2%} of USDe supply",
+        f"  {changes_line(fund, spans=(7, 30, 90))}",
+    ]
+    return lines
+
+
+def backing_line(collateral):
+    """Share of USDe backing in liquid cash versus perp-hedged assets that earn or pay funding."""
+    total = sum(c["usdAmount"] or 0 for c in collateral)
+    cash = sum(c["usdAmount"] or 0 for c in collateral if c["asset"] == "Liquid Cash")
+    return f"Backing: {cash / total:.0%} liquid cash · {1 - cash / total:.0%} perp-hedged ({fmt_usd(total - cash)})"
 
 
 def fmt_link_small(amount):
@@ -556,12 +594,15 @@ def ethena_section(today):
     values = {"usde_supply": supply, "usde_avg14": avg_now}
 
     try:
-        y = get_json(ETHENA_YIELD_URL)["avg30dSusdeYield"]
+        yields = get_json(ETHENA_YIELD_URL)
+        y = yields["avg30dSusdeYield"]
         try:
             as_of = datetime.strptime(y["lastUpdated"], "%d %b %y").strftime("%d %b")
         except ValueError:
             as_of = y["lastUpdated"]
-        lines.append(f"sUSDe yield (30d avg): {y['value']:.2f}% (as of {as_of})")
+        protocol = yields.get("avg30dProtocolYield", {}).get("value")
+        protocol_part = f" · protocol {protocol:.2f}%" if protocol is not None else ""
+        lines.append(f"sUSDe yield (30d avg): {y['value']:.2f}%{protocol_part} (as of {as_of})")
         values["susde_yield_30d"] = y["value"]
     except (OSError, ValueError, KeyError, TypeError) as e:
         log(f"sUSDe yield unavailable: {e}")
@@ -574,6 +615,32 @@ def ethena_section(today):
     except (OSError, ValueError, KeyError) as e:
         log(f"sUSDe staked unavailable: {e}")
         lines.append("Staked as sUSDe: unavailable")
+
+    lines.append("")
+    try:
+        fund = daily_last(get_json(ETHENA_RESERVE_FUND_URL)["queryIndex"][0]["yields"])
+        lines += reserve_fund_lines(fund, supply)
+        values["ethena_reserve_fund"] = fund[-1][1]
+    except (OSError, ValueError, KeyError, IndexError) as e:
+        log(f"Ethena Reserve Fund unavailable: {e}")
+        lines.append("Reserve Fund: unavailable")
+    try:
+        lines.append(backing_line(get_json(ETHENA_COLLATERAL_URL)["collateral"]))
+    except (OSError, ValueError, KeyError, ZeroDivisionError) as e:
+        log(f"Ethena backing unavailable: {e}")
+
+    lines.append("")
+    for label, url, key in [
+        ("USDe on Avalanche (Ethena Pay)", USDE_AVALANCHE_CHART_URL, "usde_avalanche"),
+        ("USDtb supply", USDTB_CHART_URL, "usdtb_supply"),
+    ]:
+        try:
+            series = stablecoin_series(url)
+            lines.append(f"{label}: {fmt_usd(series[-1][1])} · {changes_line(series, spans=(7, 30))}")
+            values[key] = series[-1][1]
+        except (OSError, ValueError, KeyError, IndexError) as e:
+            log(f"{label} unavailable: {e}")
+            lines.append(f"{label}: unavailable")
     return lines, values
 
 

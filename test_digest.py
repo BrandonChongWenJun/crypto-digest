@@ -250,6 +250,36 @@ class LinkReserveTest(unittest.TestCase):
         self.assertEqual(lines[1:], ["Reserve buys vs unlocks: unavailable", "Staked: 41.0M LINK (community pool 98% full)"])
 
 
+class EthenaReserveTest(unittest.TestCase):
+    def test_daily_last_keeps_last_reading_per_day(self):
+        points = [
+            {"timestamp": "2026-11-17T23:00:00.000Z", "value": 2},
+            {"timestamp": "2026-11-17T01:00:00.000Z", "value": 1},
+            {"timestamp": "2026-11-18T10:00:00.000Z", "value": 3},
+        ]
+        self.assertEqual(digest.daily_last(points), [(date(2026, 11, 17), 2), (date(2026, 11, 18), 3)])
+
+    def test_reserve_fund_lines(self):
+        fund = daily([62.1e6] * 84 + [62.05e6] * 7)
+        self.assertEqual(
+            digest.reserve_fund_lines(fund, 4.8e9),
+            ["Reserve Fund: $62.0M · 1.29% of USDe supply", "  7d −0.1% · 30d −0.1% · 90d −0.1%"],
+        )
+
+    def test_reserve_fund_drawdown_alert(self):
+        lines = digest.reserve_fund_lines(daily([62e6] * 8 + [55e6]), 4.8e9)
+        self.assertEqual(lines[0], "🚨 Reserve Fund −11.3% in 7 days: it's paying for negative funding or a loss")
+
+    def test_backing_line(self):
+        collateral = [
+            {"asset": "Liquid Cash", "usdAmount": 4e9},
+            {"asset": "BTC", "usdAmount": 6e8},
+            {"asset": "ETH", "usdAmount": 2e8},
+            {"asset": "stETH", "usdAmount": None},
+        ]
+        self.assertEqual(digest.backing_line(collateral), "Backing: 83% liquid cash · 17% perp-hedged ($800.0M)")
+
+
 class AeroTest(unittest.TestCase):
     def test_parent_volumes_groups_versions(self):
         protocols = [
